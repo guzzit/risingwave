@@ -36,9 +36,9 @@ use super::TableIter;
 use crate::cell_based_row_deserializer::{
     make_column_desc_index, CellBasedRowDeserializer, ColumnDescMapping,
 };
+use crate::cell_based_row_serializer::CellBasedRowSerializer;
 // use crate::cell_deserializer::CellDeserializer;
 use crate::cell_serializer::CellSerializer;
-use crate::cell_based_row_serializer::CellBasedRowSerializer;
 use crate::error::{StorageError, StorageResult};
 use crate::keyspace::StripPrefixIterator;
 use crate::storage_value::{StorageValue, ValueMeta};
@@ -46,7 +46,7 @@ use crate::{Keyspace, StateStore, StateStoreIter};
 
 pub type CellBasedTable<S> = CellBasedTableExtended<S, CellBasedRowSerializer>;
 
-impl <S: StateStore> CellBasedTable<S> {
+impl<S: StateStore> CellBasedTable<S> {
     pub fn new(
         keyspace: Keyspace<S>,
         column_descs: Vec<ColumnDesc>,
@@ -118,7 +118,6 @@ pub struct CellBasedTableExtended<S: StateStore, SER: CellSerializer> {
     /// not required.
     dist_key_indices: Option<Vec<usize>>,
 }
-
 
 impl<S: StateStore, SER: CellSerializer> std::fmt::Debug for CellBasedTableExtended<S, SER> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
