@@ -45,9 +45,16 @@ enum HummockCommands {
         #[clap(short, long = "table-id", default_value_t = u32::MAX)]
         tableid: u32,
     },
+    /// trigger a targeted compaction through compaction_group_id
     TriggerManualCompaction {
         #[clap(short, long = "compaction-group-id", default_value_t = 2)]
         compaction_group_id: u64,
+
+        #[clap(short, long = "table-id", default_value_t = 0)]
+        table_id: u32,
+
+        #[clap(short, long = "level", default_value_t = 1)]
+        level: u32,
     },
 }
 
@@ -61,7 +68,9 @@ pub async fn start(opts: CliOpts) {
         }
         Commands::Hummock(HummockCommands::TriggerManualCompaction {
             compaction_group_id,
-        }) => cmd_impl::hummock::trigger_manual_compaction(*compaction_group_id)
+            table_id,
+            level,
+        }) => cmd_impl::hummock::trigger_manual_compaction(*compaction_group_id, *table_id, *level)
             .await
             .unwrap(),
     }
