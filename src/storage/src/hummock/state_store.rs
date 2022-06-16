@@ -354,6 +354,10 @@ impl StateStore for HummockStorage {
         epoch: u64,
     ) -> Self::IngestBatchFuture<'_> {
         async move {
+            // This line will cause segmentation fault when running e2e_test/streaming/time_window.slt.
+            assert!(self.hummock_meta_client.get_compaction_groups().await.is_ok(), "RPC OK");
+            // Or construct the below line, which uses `meta_client` and results the same segmentation fault like `hummock_meta_client`.
+            // self.meta_client.send_heartbeat(self.meta_client.worker_id()).await.unwrap();
             let size = self
                 .local_version_manager
                 .write_shared_buffer(epoch, kv_pairs, false)
