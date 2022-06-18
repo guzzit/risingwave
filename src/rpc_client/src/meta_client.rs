@@ -24,42 +24,17 @@ use risingwave_pb::catalog::{
 };
 use risingwave_pb::common::{WorkerNode, WorkerType};
 use risingwave_pb::ddl_service::ddl_service_client::DdlServiceClient;
-use risingwave_pb::ddl_service::{
-    CreateDatabaseRequest, CreateDatabaseResponse, CreateMaterializedSourceRequest,
-    CreateMaterializedSourceResponse, CreateMaterializedViewRequest,
-    CreateMaterializedViewResponse, CreateSchemaRequest, CreateSchemaResponse, CreateSourceRequest,
-    CreateSourceResponse, DropDatabaseRequest, DropDatabaseResponse, DropMaterializedSourceRequest,
-    DropMaterializedSourceResponse, DropMaterializedViewRequest, DropMaterializedViewResponse,
-    DropSchemaRequest, DropSchemaResponse, DropSourceRequest, DropSourceResponse,
-};
+use risingwave_pb::ddl_service::*;
 use risingwave_pb::hummock::hummock_manager_service_client::HummockManagerServiceClient;
-use risingwave_pb::hummock::{
-    CompactTask, CompactionGroup, GetCompactionGroupsRequest, GetCompactionGroupsResponse,
-    GetNewTableIdRequest, GetNewTableIdResponse, HummockSnapshot, HummockVersion,
-    PinSnapshotRequest, PinSnapshotResponse, PinVersionRequest, PinVersionResponse,
-    ReportCompactionTasksRequest, ReportCompactionTasksResponse, ReportVacuumTaskRequest,
-    ReportVacuumTaskResponse, SstableInfo, SubscribeCompactTasksRequest,
-    SubscribeCompactTasksResponse, UnpinSnapshotBeforeRequest, UnpinSnapshotBeforeResponse,
-    UnpinSnapshotRequest, UnpinSnapshotResponse, UnpinVersionRequest, UnpinVersionResponse,
-    VacuumTask,
-};
+use risingwave_pb::hummock::*;
 use risingwave_pb::meta::cluster_service_client::ClusterServiceClient;
 use risingwave_pb::meta::heartbeat_service_client::HeartbeatServiceClient;
 use risingwave_pb::meta::notification_service_client::NotificationServiceClient;
 use risingwave_pb::meta::stream_manager_service_client::StreamManagerServiceClient;
-use risingwave_pb::meta::{
-    ActivateWorkerNodeRequest, ActivateWorkerNodeResponse, AddWorkerNodeRequest,
-    AddWorkerNodeResponse, DeleteWorkerNodeRequest, DeleteWorkerNodeResponse, FlushRequest,
-    FlushResponse, HeartbeatRequest, HeartbeatResponse, ListAllNodesRequest, ListAllNodesResponse,
-    SubscribeRequest, SubscribeResponse,
-};
+use risingwave_pb::meta::*;
 use risingwave_pb::stream_plan::StreamFragmentGraph;
 use risingwave_pb::user::user_service_client::UserServiceClient;
-use risingwave_pb::user::{
-    CreateUserRequest, CreateUserResponse, DropUserRequest, DropUserResponse, GrantPrivilege,
-    GrantPrivilegeRequest, GrantPrivilegeResponse, RevokePrivilegeRequest, RevokePrivilegeResponse,
-    UserInfo,
-};
+use risingwave_pb::user::*;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::oneshot::Sender;
 use tokio::task::JoinHandle;
@@ -74,7 +49,7 @@ type DatabaseId = u32;
 type SchemaId = u32;
 
 /// Client to meta server. Cloning the instance is lightweight.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct MetaClient {
     worker_id: Option<u32>,
     pub inner: GrpcMetaClient,
@@ -349,6 +324,12 @@ impl MetaClient {
         (join_handle, shutdown_tx)
     }
 
+    pub async fn list_materialize_view(&self) -> Result<Vec<ProstTable>> {
+        let request = ListMaterializedViewRequest {};
+        let resp = self.inner.list_materialized_view(request).await?;
+        Ok(resp.tables)
+    }
+
     pub async fn flush(&self) -> Result<()> {
         let request = FlushRequest::default();
         self.inner.flush(request).await?;
@@ -448,6 +429,15 @@ impl HummockMetaClient for MetaClient {
         let resp = self.inner.get_compaction_groups(req).await?;
         Ok(resp.compaction_groups)
     }
+
+    async fn trigger_manual_compaction(&self, compaction_group_id: u64) -> Result<()> {
+        let req = TriggerManualCompactionRequest {
+            compaction_group_id,
+        };
+
+        self.inner.trigger_manual_compaction(req).await?;
+        Ok(())
+    }
 }
 
 /// Client to meta server. Cloning the instance is lightweight.
@@ -546,6 +536,7 @@ macro_rules! for_all_meta_rpc {
             ,{ ddl_client, drop_source, DropSourceRequest, DropSourceResponse }
             ,{ ddl_client, drop_database, DropDatabaseRequest, DropDatabaseResponse }
             ,{ ddl_client, drop_schema, DropSchemaRequest, DropSchemaResponse }
+            ,{ ddl_client, list_materialized_view, ListMaterializedViewRequest, ListMaterializedViewResponse }
             ,{ hummock_client, pin_version, PinVersionRequest, PinVersionResponse }
             ,{ hummock_client, unpin_version, UnpinVersionRequest, UnpinVersionResponse }
             ,{ hummock_client, pin_snapshot, PinSnapshotRequest, PinSnapshotResponse }
@@ -556,6 +547,7 @@ macro_rules! for_all_meta_rpc {
             ,{ hummock_client, subscribe_compact_tasks, SubscribeCompactTasksRequest, Streaming<SubscribeCompactTasksResponse> }
             ,{ hummock_client, report_vacuum_task, ReportVacuumTaskRequest, ReportVacuumTaskResponse }
             ,{ hummock_client, get_compaction_groups, GetCompactionGroupsRequest, GetCompactionGroupsResponse }
+            ,{ hummock_client, trigger_manual_compaction, TriggerManualCompactionRequest, TriggerManualCompactionResponse }
             ,{ user_client, create_user, CreateUserRequest, CreateUserResponse }
             ,{ user_client, drop_user, DropUserRequest, DropUserResponse }
             ,{ user_client, grant_privilege, GrantPrivilegeRequest, GrantPrivilegeResponse }
