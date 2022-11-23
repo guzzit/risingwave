@@ -680,6 +680,8 @@ impl Session<PgResponseStream> for SessionImpl {
         Ok(rsp)
     }
 
+    
+
     async fn infer_return_type(
         self: Arc<Self>,
         sql: &str,

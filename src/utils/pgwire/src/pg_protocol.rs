@@ -12,14 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+
+use anyhow::Result;
 use std::collections::HashMap;
 use std::fmt::Write;
-use std::io::{self, Error as IoError, ErrorKind};
+use std::fs::OpenOptions;
+use std::io::{self, Error as IoError, ErrorKind, Write as IoWrite};
+use std::path::Path;
 use std::str::Utf8Error;
 use std::sync::Arc;
-use std::{str, vec};
+use std::{str, vec, env};
 
 use bytes::{Bytes, BytesMut};
+use chrono::{DateTime, NaiveDateTime, Utc};
 use futures::stream::StreamExt;
 use futures::Stream;
 use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
@@ -138,10 +143,52 @@ where
                         self.stream.write_for_error(&BeMessage::ReadyForQuery);
                     }
 
-                    PsqlError::QueryError(_) => {
+                    PsqlError::QueryError(_) => {        
                         self.stream
                             .write_for_error(&BeMessage::ErrorResponse(Box::new(e)));
                         self.stream.write_for_error(&BeMessage::ReadyForQuery);
+
+                         //let b = self.log(&error_msg).await;
+
+                        // match b {
+                        //     Ok(_) => (),
+                        //     Err(e) => tracing::error!("{}", e)
+                        // }
+
+                        // let log_path = env::var("PREFIX_LOG");
+
+                        // match log_path {
+                        //     Ok(path) => {
+                        //         let logger = OpenOptions::new()
+                        //             .write(true)
+                        //             .create(true)
+                        //             //.truncate(true)
+                        //             .open(Path::new(&path).join("query-error.log"));
+                                
+                        //         let msg = self.read_message().await;
+
+                        //         match msg {
+                        //             Ok(FeMessage::Query(query_msg)) => {
+                        //                 query_msg.get_sql().unwrap();
+                        //             },
+                        //             _ => ()
+                        //         }
+
+                        //         let log = match logger {
+                        //             Ok(mut log_file) => writeln!(log_file, "{}", error_msg),
+                        //             Err(_) =>  todo!("dd")
+                        //         };
+
+                        //         match log {
+                        //             Ok(_) => (),
+                        //             Err(e) => todo!("dd")
+                        //         }
+
+                        //     },
+                        //     Err(_) => todo!("dd")
+                        // }
+
+                        
                     }
 
                     PsqlError::CloseError(_)
@@ -166,13 +213,54 @@ where
         }
     }
 
+    fn log(&mut self, error_msg: &str, query_msg: &str) -> anyhow::Result<()> {
+        let path = env::var("PREFIX_LOG")?;
+        // let mut error_msg = String::from(error_msg);
+       
+        let mut logger = OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(Path::new(&path).join("query-error.log"))?;
+        
+         //let msg = self.read_message().await?;
+
+         //if let FeMessage::Query(query_msg) =  msg{
+            //let m = query_msg.get_sql()?;
+            let dt = DateTime::<Utc>::from_utc(NaiveDateTime::from_timestamp(61, 0), Utc);
+            let n = format!("{} failed to handle sql:\n{}:\n{}\n", dt.to_string(), query_msg, error_msg);
+            writeln!(logger, "{}", n)?;
+
+         //}
+        // writeln!(logger, "{}", error_msg)?;
+        Ok(())
+    }
+
     async fn do_process_inner(&mut self) -> PsqlResult<bool> {
         let msg = self.read_message().await?;
         match msg {
             FeMessage::Ssl => self.process_ssl_msg()?,
             FeMessage::Startup(msg) => self.process_startup_msg(msg)?,
             FeMessage::Password(msg) => self.process_password_msg(msg)?,
-            FeMessage::Query(query_msg) => self.process_query_msg(query_msg.get_sql()).await?,
+            FeMessage::Query(query_msg) => {
+                 //let a = self.process_query_msg(query_msg.get_sql()).await;
+
+                // match a {
+                //     Ok(_) => (),
+                //     Err(e) => {
+                //         self.log( e.to_string().as_str(), query_msg.get_sql()?);
+                //         return Err(e);
+                //     }
+                // }
+
+                
+                if let Err(e) = self.process_query_msg(query_msg.get_sql()).await {
+                        self.log( e.to_string().as_str(), query_msg.get_sql()?)
+                        .map_err(|err| PsqlError::QueryError(err.into()))?;              
+                        return Err(e);
+                    }
+                    
+                }
+                ,
             FeMessage::CancelQuery(m) => self.process_cancel_msg(m)?,
             FeMessage::Terminate => self.process_terminate(),
             FeMessage::Parse(m) => self.process_parse_msg(m).await?,
